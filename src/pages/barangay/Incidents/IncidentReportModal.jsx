@@ -530,19 +530,14 @@ const IncidentReportModal = ({ onClose, onSuccess }) => {
 
       <div className="col-12 col-md-6">
         <label className="form-label fw-semibold">Barangay *</label>
-        <select
+        <input
+          type="text"
           value={form.barangay}
           onChange={(e) => handleBasicInfoChange("barangay", e.target.value)}
-          className="form-select"
+          className="form-control"
+          placeholder="Enter barangay name"
           required
-        >
-          <option value="">Select Barangay</option>
-          {dropdownData.barangays.map((barangay) => (
-            <option key={barangay} value={barangay}>
-              {barangay}
-            </option>
-          ))}
-        </select>
+        />
       </div>
 
       <div className="col-12 col-md-6">
