@@ -9,6 +9,7 @@ const MunicipalReports = () => {
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [familiesExportLoading, setFamiliesExportLoading] = useState(false);
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
@@ -17,16 +18,42 @@ const MunicipalReports = () => {
     incident_id: 'all'
   });
   const [reportData, setReportData] = useState(null);
+  const [familiesData, setFamiliesData] = useState(null);
   const [incidents, setIncidents] = useState([]);
+  const [barangays, setBarangays] = useState([]);
   const [loadingIncidents, setLoadingIncidents] = useState(false);
-
-  const barangayOptions = [
-    "BOGAYO", "BOLISONG", "BOYUGAN East", "BOYUGAN West", "BUALAN", "DIPLO",
-    "GAWIL", "GUSOM", "KITAANG DAGAT", "LANTAWAN", "LIMAMAWAN", "MAHAYAHAY",
-    "PANGI", "PICANAN", "POBLACION", "SALAGMANOK", "SICADE", "SUMINALOM"
-  ];
+  const [loadingBarangays, setLoadingBarangays] = useState(false);
+  const [activeTab, setActiveTab] = useState('summary'); // 'summary' or 'families'
 
   const incidentTypeOptions = ["Flood", "Landslide", "Fire", "Earthquake", "Vehicular"];
+
+  // NEW: Fetch barangays from API
+  const fetchBarangays = async () => {
+    setLoadingBarangays(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_LARAVEL_API}/reports/barangays`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setBarangays(data.barangays);
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error) {
+      console.error('Failed to fetch barangays:', error);
+      showToast.error('Failed to load barangays list');
+      // Fallback to empty array
+      setBarangays([]);
+    } finally {
+      setLoadingBarangays(false);
+    }
+  };
 
   const fetchIncidents = async () => {
     setLoadingIncidents(true);
@@ -79,6 +106,38 @@ const MunicipalReports = () => {
     } catch (error) {
       console.error('Report generation error:', error);
       showToast.error('Failed to generate report');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Generate families and persons report
+  const generateFamiliesReport = async () => {
+    setLoading(true);
+    setFamiliesData(null);
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_LARAVEL_API}/reports/families-persons`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(filters)
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setFamiliesData(data.data);
+        setActiveTab('families');
+        showToast.success('Families report generated successfully');
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error) {
+      console.error('Families report generation error:', error);
+      showToast.error('Failed to generate families report');
     } finally {
       setLoading(false);
     }
@@ -138,6 +197,7 @@ const MunicipalReports = () => {
         },
       });
 
+      // ... rest of your existing PDF export code remains the same
       // Gender Breakdown
       startY = doc.lastAutoTable.finalY + 10;
       doc.text('GENDER BREAKDOWN', 14, startY);
@@ -247,6 +307,158 @@ const MunicipalReports = () => {
     }
   };
 
+  // Export families and persons to PDF
+  const exportFamiliesToPDF = () => {
+    if (!familiesData) return;
+
+    setFamiliesExportLoading(true);
+    try {
+      const doc = new jsPDF();
+      const dateRange = getDateRangeText();
+      const generatedDate = new Date().toLocaleString();
+
+      // Title and Header
+      doc.setFontSize(16);
+      doc.setTextColor(41, 128, 185);
+      
+      let title = "FAMILIES AND PERSONS REPORT";
+      if (familiesData.selected_incident) {
+        title = `${familiesData.selected_incident.title} - FAMILIES REPORT`;
+      }
+      
+      doc.text(title, 105, 15, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Generated on: ${generatedDate}`, 14, 25);
+      doc.text(`Date Range: ${dateRange}`, 14, 32);
+
+      // Summary
+      doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0);
+      doc.text('SUMMARY', 14, 45);
+      
+      const summaryData = [
+        ['Total Incidents', familiesData.summary.total_incidents],
+        ['Total Families', familiesData.summary.total_families],
+        ['Total Persons', familiesData.summary.total_persons],
+      ];
+
+      autoTable(doc, {
+        startY: 50,
+        head: [['Metric', 'Count']],
+        body: summaryData,
+        theme: 'grid',
+        headStyles: { 
+          fillColor: [41, 128, 185],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold'
+        },
+      });
+
+      let startY = doc.lastAutoTable.finalY + 15;
+
+      // Generate tables for each incident
+      familiesData.incidents.forEach((incident, incidentIndex) => {
+        // Add page break if needed
+        if (startY > 250) {
+          doc.addPage();
+          startY = 20;
+        }
+
+        // Incident header
+        doc.setFontSize(14);
+        doc.setTextColor(41, 128, 185);
+        doc.text(`INCIDENT: ${incident.incident_title}`, 14, startY);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Type: ${incident.incident_type} | Date: ${new Date(incident.incident_date).toLocaleDateString()} | Location: ${incident.location}`, 14, startY + 7);
+
+        startY += 20;
+
+        // Families and members table
+        incident.families.forEach((family, familyIndex) => {
+          if (startY > 250) {
+            doc.addPage();
+            startY = 20;
+          }
+
+          // Family header
+          doc.setFontSize(11);
+          doc.setTextColor(0, 0, 0);
+          doc.text(`Family #${family.family_number} - ${family.family_size} members`, 14, startY);
+          
+          if (family.evacuation_center) {
+            doc.text(`Evacuation Center: ${family.evacuation_center}`, 14, startY + 5);
+            startY += 10;
+          } else {
+            startY += 7;
+          }
+
+          // Family members table
+          const memberData = family.members.map(member => [
+            member.position_in_family,
+            member.full_name,
+            member.sex_gender_identity,
+            member.age,
+            member.civil_status,
+            member.vulnerable_groups?.join(', ') || 'None',
+            member.displaced === 'Y' ? 'Yes' : 'No'
+          ]);
+
+          autoTable(doc, {
+            startY: startY,
+            head: [['Position', 'Full Name', 'Gender', 'Age', 'Civil Status', 'Vulnerable Groups', 'Displaced']],
+            body: memberData,
+            theme: 'grid',
+            headStyles: { 
+              fillColor: [52, 152, 219],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold'
+            },
+            styles: {
+              fontSize: 8,
+              cellPadding: 2
+            },
+            columnStyles: {
+              0: { cellWidth: 20 },
+              1: { cellWidth: 40 },
+              2: { cellWidth: 15 },
+              3: { cellWidth: 10 },
+              4: { cellWidth: 20 },
+              5: { cellWidth: 30 },
+              6: { cellWidth: 15 }
+            }
+          });
+
+          startY = doc.lastAutoTable.finalY + 10;
+
+          // Add spacing between families
+          if (familyIndex < incident.families.length - 1) {
+            startY += 5;
+          }
+        });
+
+        // Add spacing between incidents
+        if (incidentIndex < familiesData.incidents.length - 1) {
+          startY += 10;
+          doc.setDrawColor(200, 200, 200);
+          doc.line(14, startY, 200, startY);
+          startY += 15;
+        }
+      });
+
+      doc.save('Families_Persons_Report.pdf');
+      showToast.success('Families PDF exported successfully');
+    } catch (error) {
+      console.error('Families PDF export error:', error);
+      showToast.error('Failed to export families PDF');
+    } finally {
+      setFamiliesExportLoading(false);
+    }
+  };
+
   const getDateRangeText = () => {
     if (filters.date_from && filters.date_to) {
       return `${filters.date_from} to ${filters.date_to}`;
@@ -262,11 +474,17 @@ const MunicipalReports = () => {
     fetchIncidents();
   }, [filters.barangay, filters.incident_type]);
 
+  // NEW: Fetch barangays on component mount
+  useEffect(() => {
+    fetchBarangays();
+  }, []);
+
   const renderReport = () => {
     if (!reportData) return null;
 
     return (
       <div className="row g-4">
+        {/* Your existing report rendering code remains exactly the same */}
         {/* Selected Incident Header */}
         {reportData.selected_incident && (
           <div className="col-12">
@@ -339,6 +557,7 @@ const MunicipalReports = () => {
           </div>
         </div>
 
+        {/* Rest of your existing report rendering remains exactly the same */}
         {/* Gender & Civil Status */}
         <div className="col-md-6">
           <div className="card">
@@ -453,6 +672,214 @@ const MunicipalReports = () => {
     );
   };
 
+  // Render families and persons report (this remains exactly the same as before)
+  const renderFamiliesReport = () => {
+    if (!familiesData) return null;
+
+    return (
+      <div className="row g-4">
+        {/* Summary Header */}
+        <div className="col-12">
+          <div className="card bg-light">
+            <div className="card-body">
+              <div className="row">
+                <div className="col-md-4">
+                  <h5 className="card-title mb-1">Report Summary</h5>
+                  <p className="card-text text-muted mb-0">
+                    {getDateRangeText()}
+                    {filters.barangay !== 'all' && ` • ${filters.barangay}`}
+                    {filters.incident_type !== 'all' && ` • ${filters.incident_type}`}
+                  </p>
+                </div>
+                <div className="col-md-8">
+                  <div className="row text-center">
+                    <div className="col-4">
+                      <h4 className="text-primary">{familiesData.summary.total_incidents}</h4>
+                      <small className="text-muted">Incidents</small>
+                    </div>
+                    <div className="col-4">
+                      <h4 className="text-primary">{familiesData.summary.total_families}</h4>
+                      <small className="text-muted">Families</small>
+                    </div>
+                    <div className="col-4">
+                      <h4 className="text-primary">{familiesData.summary.total_persons}</h4>
+                      <small className="text-muted">Persons</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Selected Incident Header */}
+        {familiesData.selected_incident && (
+          <div className="col-12">
+            <div className="card bg-primary text-white">
+              <div className="card-body">
+                <h5 className="card-title mb-1">{familiesData.selected_incident.title}</h5>
+                <p className="card-text mb-0">
+                  {familiesData.selected_incident.incident_type} • {familiesData.selected_incident.barangay} • {new Date(familiesData.selected_incident.incident_date).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Incidents List */}
+        {familiesData.incidents.map((incident) => (
+          <div key={incident.incident_id} className="col-12">
+            <div className="card">
+              <div className="card-header bg-info text-white">
+                <h6 className="mb-0">
+                  {incident.incident_title}
+                  <small className="ms-2">
+                    {incident.incident_type} • {new Date(incident.incident_date).toLocaleDateString()} • {incident.families.length} families
+                  </small>
+                </h6>
+              </div>
+              <div className="card-body">
+                {/* Families List */}
+                {incident.families.map((family) => (
+                  <div key={family.family_id} className="card mb-3">
+                    <div className="card-header bg-light">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <h6 className="mb-0">Family #{family.family_number} - {family.family_size} members</h6>
+                        <div>
+                          {family.evacuation_center && (
+                            <span className="badge bg-warning me-2">
+                              Evacuation: {family.evacuation_center}
+                            </span>
+                          )}
+                          {family.assistance_received && (
+                            <span className="badge bg-success">Assistance Received</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="card-body">
+                      <div className="table-responsive">
+                        <table className="table table-sm table-striped">
+                          <thead>
+                            <tr>
+                              <th>Position</th>
+                              <th>Full Name</th>
+                              <th>Gender</th>
+                              <th>Age</th>
+                              <th>Civil Status</th>
+                              <th>Vulnerable Groups</th>
+                              <th>Displaced</th>
+                              <th>Casualty</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {family.members.map((member) => (
+                              <tr key={member.member_id}>
+                                <td>{member.position_in_family}</td>
+                                <td>
+                                  <strong>{member.full_name}</strong>
+                                  {member.pwd_type && (
+                                    <div>
+                                      <small className="text-muted">PWD: {member.pwd_type}</small>
+                                    </div>
+                                  )}
+                                </td>
+                                <td>{member.sex_gender_identity}</td>
+                                <td>{member.age}</td>
+                                <td>{member.civil_status}</td>
+                                <td>
+                                  {member.vulnerable_groups && member.vulnerable_groups.length > 0 ? (
+                                    <div>
+                                      {member.vulnerable_groups.map((group, index) => (
+                                        <span key={index} className="badge bg-secondary me-1 mb-1">
+                                          {group}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted">None</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <span className={`badge ${member.displaced === 'Y' ? 'bg-warning' : 'bg-secondary'}`}>
+                                    {member.displaced === 'Y' ? 'Yes' : 'No'}
+                                  </span>
+                                </td>
+                                <td>
+                                  {member.casualty ? (
+                                    <span className={`badge ${
+                                      member.casualty.toLowerCase().includes('dead') ? 'bg-danger' :
+                                      member.casualty.toLowerCase().includes('injured') ? 'bg-warning' : 'bg-info'
+                                    }`}>
+                                      {member.casualty}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted">None</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      
+                      {/* Family Assistance Details */}
+                      {(family.food_assistance || family.non_food_assistance || family.shelter_assistance || family.medical_assistance || family.other_remarks) && (
+                        <div className="mt-3 p-3 bg-light rounded">
+                          <h6 className="mb-2">Assistance Details:</h6>
+                          <div className="row">
+                            {family.food_assistance && (
+                              <div className="col-auto">
+                                <span className="badge bg-success me-2">Food</span>
+                              </div>
+                            )}
+                            {family.non_food_assistance && (
+                              <div className="col-auto">
+                                <span className="badge bg-info me-2">Non-Food</span>
+                              </div>
+                            )}
+                            {family.shelter_assistance && (
+                              <div className="col-auto">
+                                <span className="badge bg-primary me-2">Shelter</span>
+                              </div>
+                            )}
+                            {family.medical_assistance && (
+                              <div className="col-auto">
+                                <span className="badge bg-warning me-2">Medical</span>
+                              </div>
+                            )}
+                          </div>
+                          {family.other_remarks && (
+                            <div className="mt-2">
+                              <small className="text-muted">Remarks: {family.other_remarks}</small>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* No Data Message */}
+        {familiesData.incidents.length === 0 && (
+          <div className="col-12">
+            <div className="card">
+              <div className="card-body text-center py-5">
+                <i className="fas fa-users fa-3x text-muted mb-3"></i>
+                <h5 className="text-muted">No families data found</h5>
+                <p className="text-muted">Try adjusting your filters to see results</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="container-fluid px-1 fadeIn">
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -480,12 +907,25 @@ const MunicipalReports = () => {
                 className="form-select form-select-sm"
                 value={filters.barangay}
                 onChange={(e) => setFilters({...filters, barangay: e.target.value, incident_id: 'all'})}
+                disabled={loadingBarangays}
               >
                 <option value="all">All Barangays</option>
-                {barangayOptions.map(barangay => (
-                  <option key={barangay} value={barangay}>{barangay}</option>
-                ))}
+                {loadingBarangays ? (
+                  <option disabled>Loading barangays...</option>
+                ) : (
+                  barangays.map(barangay => (
+                    <option key={barangay} value={barangay}>{barangay}</option>
+                  ))
+                )}
               </select>
+              {loadingBarangays && (
+                <div className="form-text">
+                  <small className="text-muted">
+                    <i className="fas fa-spinner fa-spin me-1"></i>
+                    Loading barangays...
+                  </small>
+                </div>
+              )}
             </div>
 
             <div className="col-md-3">
@@ -556,41 +996,90 @@ const MunicipalReports = () => {
                 </>
               ) : (
                 <>
-                  <i className="fas fa-file-alt me-2"></i>
-                  Generate Report
+                  <i className="fas fa-chart-bar me-2"></i>
+                  Generate Summary
+                </>
+              )}
+            </button>
+
+            <button 
+              className="btn btn-info btn-sm"
+              onClick={generateFamiliesReport}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2"></span>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-users me-2"></i>
+                  View Families
                 </>
               )}
             </button>
             
-            {reportData && (
+            {reportData && activeTab === 'summary' && (
               <button 
                 className="btn btn-success btn-sm"
                 onClick={exportToPDF}
                 disabled={exportLoading}
               >
                 <i className="fas fa-file-pdf me-2"></i>
-                Export PDF
+                Export Summary PDF
+              </button>
+            )}
+
+            {familiesData && activeTab === 'families' && (
+              <button 
+                className="btn btn-success btn-sm"
+                onClick={exportFamiliesToPDF}
+                disabled={familiesExportLoading}
+              >
+                <i className="fas fa-file-pdf me-2"></i>
+                Export Families PDF
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {reportData && (
-        <div className="card shadow border-0">
-          <div className="card-header py-3" style={{
-            backgroundColor: "var(--primary-color)",
-            background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
-          }}>
-            <h6 className="card-title mb-0 text-white">
-              <i className="fas fa-chart-bar me-2"></i>
-              Population Report - {getDateRangeText()}
-              {filters.barangay !== 'all' && ` - ${filters.barangay}`}
-              {filters.incident_type !== 'all' && ` - ${filters.incident_type}`}
-            </h6>
+      {/* Tab Navigation */}
+      {(reportData || familiesData) && (
+        <div className="card shadow border-0 mb-4">
+          <div className="card-header bg-white">
+            <ul className="nav nav-tabs card-header-tabs">
+              <li className="nav-item">
+                <button 
+                  className={`nav-link ${activeTab === 'summary' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('summary')}
+                  disabled={!reportData}
+                >
+                  <i className="fas fa-chart-bar me-2"></i>
+                  Summary Report
+                </button>
+              </li>
+              <li className="nav-item">
+                <button 
+                  className={`nav-link ${activeTab === 'families' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('families')}
+                  disabled={!familiesData}
+                >
+                  <i className="fas fa-users me-2"></i>
+                  Families & Persons
+                  {familiesData && (
+                    <span className="badge bg-primary ms-2">
+                      {familiesData.summary.total_families} families
+                    </span>
+                  )}
+                </button>
+              </li>
+            </ul>
           </div>
           <div className="card-body">
-            {renderReport()}
+            {activeTab === 'summary' && renderReport()}
+            {activeTab === 'families' && renderFamiliesReport()}
           </div>
         </div>
       )}

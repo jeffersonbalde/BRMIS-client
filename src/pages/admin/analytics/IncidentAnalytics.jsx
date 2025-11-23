@@ -2,6 +2,34 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { showToast } from "../../../services/notificationService";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Bar, Line, Pie, Doughnut } from 'react-chartjs-2';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 const IncidentAnalytics = () => {
   const { token } = useAuth();
@@ -19,8 +47,6 @@ const IncidentAnalytics = () => {
       setLoading(true);
       setError(null);
       
-      console.log('Fetching analytics with date range:', dateRange);
-      
       const response = await fetch(
         `${import.meta.env.VITE_LARAVEL_API}/analytics/municipal?date_range=${dateRange}`,
         {
@@ -31,18 +57,14 @@ const IncidentAnalytics = () => {
         }
       );
 
-      console.log('Response status:', response.status);
-      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('API Response data:', data);
       
       if (data.success) {
         setAnalytics(data.data);
-        console.log('Analytics data set successfully');
       } else {
         throw new Error(data.message || 'Failed to fetch analytics data');
       }
@@ -61,32 +83,217 @@ const IncidentAnalytics = () => {
     return num;
   };
 
-  // Calculate percentage for progress bars
-  const calculatePercentage = (value, total) => {
-    if (total === 0) return 0;
-    return (value / total) * 100;
+  // Fixed safeArray function to handle objects with numeric keys
+  const safeArray = (array) => {
+    if (Array.isArray(array)) return array;
+    
+    // Handle objects with numeric keys (like {0: {...}, 1: {...}, ...})
+    if (array && typeof array === 'object') {
+      const keys = Object.keys(array);
+      
+      // Check if this is an object that should be an array (has numeric keys)
+      if (keys.length > 0 && keys.every(key => !isNaN(parseInt(key)))) {
+        return Object.values(array);
+      }
+      
+      // If it's a single object, wrap it in an array
+      return [array];
+    }
+    
+    return [];
   };
 
-  // Get color based on severity
-  const getSeverityColor = (severity) => {
-    const colors = {
-      'Low': '#28a745',
-      'Medium': '#ffc107', 
-      'High': '#fd7e14',
-      'Critical': '#dc3545'
+  // Chart options and data configurations
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          stepSize: 1
+        }
+      }
+    }
+  };
+
+  const pieChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom',
+      },
+    },
+  };
+
+  // Prepare chart data with fixed array handling
+  const getIncidentsByTypeChartData = () => {
+    const incidentsByType = safeArray(analytics?.incidents_by_type);
+    
+    return {
+      labels: incidentsByType.map(item => item.incident_type || 'Unknown'),
+      datasets: [
+        {
+          label: 'Number of Incidents',
+          data: incidentsByType.map(item => item.count || 0),
+          backgroundColor: [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+            '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'
+          ],
+          borderColor: [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+            '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'
+          ],
+          borderWidth: 1,
+        },
+      ],
     };
-    return colors[severity] || '#6c757d';
   };
 
-  // Get color based on status
-  const getStatusColor = (status) => {
-    const colors = {
+  const getSeverityDistributionChartData = () => {
+    const severityDistribution = safeArray(analytics?.severity_distribution);
+    const severityColors = {
+      'Low': '#28a745',
+      'Medium': '#ffc107',
+      'High': '#fd7e14',
+      'Critical': '#dc3545',
+      'Not Specified': '#6c757d'
+    };
+
+    return {
+      labels: severityDistribution.map(item => item.severity || 'Unknown'),
+      datasets: [
+        {
+          label: 'Severity Distribution',
+          data: severityDistribution.map(item => item.count || 0),
+          backgroundColor: severityDistribution.map(item => 
+            severityColors[item.severity] || '#6c757d'
+          ),
+          borderColor: severityDistribution.map(item => 
+            severityColors[item.severity] || '#6c757d'
+          ),
+          borderWidth: 2,
+        },
+      ],
+    };
+  };
+
+  const getStatusDistributionChartData = () => {
+    const statusDistribution = safeArray(analytics?.status_distribution);
+    const statusColors = {
       'Reported': '#17a2b8',
       'Investigating': '#ffc107',
       'Resolved': '#28a745',
       'Archived': '#6c757d'
     };
-    return colors[status] || '#6c757d';
+
+    return {
+      labels: statusDistribution.map(item => item.status || 'Unknown'),
+      datasets: [
+        {
+          label: 'Status Distribution',
+          data: statusDistribution.map(item => item.count || 0),
+          backgroundColor: statusDistribution.map(item => 
+            statusColors[item.status] || '#6c757d'
+          ),
+          borderColor: statusDistribution.map(item => 
+            statusColors[item.status] || '#6c757d'
+          ),
+          borderWidth: 2,
+        },
+      ],
+    };
+  };
+
+  const getMonthlyTrendsChartData = () => {
+    const monthlyTrends = safeArray(analytics?.monthly_trends);
+    
+    return {
+      labels: monthlyTrends.map(item => item.month || 'Unknown'),
+      datasets: [
+        {
+          label: 'Monthly Incidents',
+          data: monthlyTrends.map(item => item.incidents || 0),
+          borderColor: '#4e73df',
+          backgroundColor: 'rgba(78, 115, 223, 0.1)',
+          fill: true,
+          tension: 0.4,
+        },
+      ],
+    };
+  };
+
+  const getBarangayDistributionChartData = () => {
+    const incidentsByBarangay = safeArray(analytics?.incidents_by_barangay);
+    
+    return {
+      labels: incidentsByBarangay.map(item => item.barangay_name || 'Unknown'),
+      datasets: [
+        {
+          label: 'Total Incidents',
+          data: incidentsByBarangay.map(item => item.count || 0),
+          backgroundColor: 'rgba(78, 115, 223, 0.8)',
+          borderColor: 'rgba(78, 115, 223, 1)',
+          borderWidth: 1,
+        },
+        {
+          label: 'High/Critical',
+          data: incidentsByBarangay.map(item => item.high_critical_count || 0),
+          backgroundColor: 'rgba(220, 53, 69, 0.8)',
+          borderColor: 'rgba(220, 53, 69, 1)',
+          borderWidth: 1,
+        },
+        {
+          label: 'Resolved',
+          data: incidentsByBarangay.map(item => item.resolved_count || 0),
+          backgroundColor: 'rgba(40, 167, 69, 0.8)',
+          borderColor: 'rgba(40, 167, 69, 1)',
+          borderWidth: 1,
+        },
+      ],
+    };
+  };
+
+  const getPopulationStatsChartData = () => {
+    const populationStats = analytics?.population_stats || {};
+    
+    return {
+      labels: ['Affected Population', 'Displaced Families', 'Displaced Persons', 'Families Assisted'],
+      datasets: [
+        {
+          label: 'Population Statistics',
+          data: [
+            populationStats.total_affected || 0,
+            populationStats.total_displaced_families || 0,
+            populationStats.total_displaced_persons || 0,
+            populationStats.total_families_assisted || 0,
+          ],
+          backgroundColor: [
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 99, 132, 0.8)',
+            'rgba(255, 206, 86, 0.8)',
+            'rgba(75, 192, 192, 0.8)',
+          ],
+          borderColor: [
+            'rgba(54, 162, 235, 1)',
+            'rgba(255, 99, 132, 1)',
+            'rgba(255, 206, 86, 1)',
+            'rgba(75, 192, 192, 1)',
+          ],
+          borderWidth: 1,
+        },
+      ],
+    };
   };
 
   // Skeleton Loaders
@@ -117,37 +324,8 @@ const IncidentAnalytics = () => {
     </div>
   );
 
-  const TableRowSkeleton = () => (
-    <tr className="align-middle">
-      <td className="text-center">
-        <div
-          className="skeleton-box"
-          style={{ width: "20px", height: "20px", margin: "0 auto" }}
-        ></div>
-      </td>
-      <td>
-        <div className="skeleton-line mb-1"></div>
-        <div className="skeleton-line" style={{ width: "60%" }}></div>
-      </td>
-      <td className="text-center">
-        <div className="skeleton-line" style={{ width: "40px", margin: "0 auto" }}></div>
-      </td>
-      <td>
-        <div className="progress" style={{ height: '20px' }}>
-          <div className="skeleton-line" style={{ width: "100%", height: "100%" }}></div>
-        </div>
-      </td>
-      <td className="text-center">
-        <div className="skeleton-badge" style={{ width: "60px", margin: "0 auto" }}></div>
-      </td>
-      <td className="text-center">
-        <div className="skeleton-badge" style={{ width: "60px", margin: "0 auto" }}></div>
-      </td>
-    </tr>
-  );
-
   const ChartSkeleton = () => (
-    <div className="card shadow border-0 mb-4">
+    <div className="card shadow border-0 h-100">
       <div className="card-header py-3" style={{
         backgroundColor: "var(--primary-color)",
         background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
@@ -158,20 +336,20 @@ const IncidentAnalytics = () => {
         </h6>
       </div>
       <div className="card-body">
-        {[...Array(5)].map((_, index) => (
-          <div key={index} className="mb-3">
-            <div className="d-flex justify-content-between mb-1">
-              <div className="skeleton-line" style={{ width: "80px" }}></div>
-              <div className="skeleton-line" style={{ width: "30px" }}></div>
-            </div>
-            <div className="progress">
-              <div className="skeleton-line" style={{ width: "100%", height: "100%" }}></div>
-            </div>
+        <div className="d-flex justify-content-center align-items-center" style={{ height: '300px' }}>
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
+
+  // Check if we have data for specific charts
+  const hasChartData = (dataKey) => {
+    const data = safeArray(analytics?.[dataKey]);
+    return data.length > 0;
+  };
 
   if (error) {
     return (
@@ -227,12 +405,7 @@ const IncidentAnalytics = () => {
 
   const { 
     overall_stats, 
-    population_stats, 
-    incidents_by_type, 
-    incidents_by_barangay, 
-    monthly_trends, 
-    severity_distribution, 
-    status_distribution 
+    population_stats 
   } = analytics || {};
 
   // Add safe fallbacks for missing data
@@ -253,20 +426,14 @@ const IncidentAnalytics = () => {
     avg_assistance_coverage: 0
   };
 
-  const safeIncidentsByType = incidents_by_type || [];
-  const safeIncidentsByBarangay = incidents_by_barangay || [];
-  const safeMonthlyTrends = monthly_trends || [];
-  const safeSeverityDistribution = severity_distribution || [];
-  const safeStatusDistribution = status_distribution || [];
-
   return (
     <div className="container-fluid px-1 fadeIn">
       {/* Page Header */}
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
         <div className="flex-grow-1">
-          <h1 className="h3 mb-1 text-dark">Incident Analytics</h1>
+          <h1 className="h3 mb-1 text-dark">Incident Analytics Dashboard</h1>
           <p className="text-muted mb-0">
-            Real-time analytics and insights from incident reports
+            Real-time data visualization and insights from incident reports
           </p>
         </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -495,189 +662,192 @@ const IncidentAnalytics = () => {
         </div>
       )}
 
-      {/* Charts Row */}
-      {loading ? (
-        <div className="row">
-          <div className="col-xl-6">
+      {/* Charts Row 1 - Incident Types and Severity */}
+      <div className="row mb-4">
+        {/* Incidents by Type - Bar Chart */}
+        <div className="col-xl-6 mb-4">
+          {loading ? (
             <ChartSkeleton />
-          </div>
-          <div className="col-xl-6">
-            <ChartSkeleton />
-          </div>
-        </div>
-      ) : (safeIncidentsByType.length > 0 || safeSeverityDistribution.length > 0) && (
-        <div className="row">
-          {/* Incidents by Type */}
-          {safeIncidentsByType.length > 0 && (
-            <div className="col-xl-6">
-              <div className="card shadow border-0 mb-4">
-                <div className="card-header py-3" style={{
-                  backgroundColor: "var(--primary-color)",
-                  background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
-                }}>
-                  <h6 className="card-title mb-0 text-white">
-                    <i className="fas fa-chart-bar me-2"></i>
-                    Incidents by Type
-                  </h6>
-                </div>
-                <div className="card-body">
-                  {safeIncidentsByType.map((item, index) => (
-                    <div key={item.incident_type} className="mb-3">
-                      <div className="d-flex justify-content-between mb-1">
-                        <span className="fw-semibold">{item.incident_type}</span>
-                        <span className="text-muted">{formatNumber(item.count)}</span>
-                      </div>
-                      <div className="progress" style={{ height: '8px' }}>
-                        <div 
-                          className="progress-bar" 
-                          role="progressbar" 
-                          style={{ 
-                            width: `${calculatePercentage(item.count, safeOverallStats.total_incidents)}%`,
-                            backgroundColor: `hsl(${index * 60}, 70%, 50%)`
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          ) : !hasChartData('incidents_by_type') ? (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-chart-bar me-2"></i>
+                  Incidents by Type
+                </h6>
+              </div>
+              <div className="card-body text-center py-5">
+                <i className="fas fa-chart-bar fa-2x text-muted mb-3"></i>
+                <p className="text-muted">No incident type data available</p>
               </div>
             </div>
-          )}
-
-          {/* Severity Distribution */}
-          {safeSeverityDistribution.length > 0 && (
-            <div className="col-xl-6">
-              <div className="card shadow border-0 mb-4">
-                <div className="card-header py-3" style={{
-                  backgroundColor: "var(--primary-color)",
-                  background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
-                }}>
-                  <h6 className="card-title mb-0 text-white">
-                    <i className="fas fa-chart-pie me-2"></i>
-                    Severity Distribution
-                  </h6>
-                </div>
-                <div className="card-body">
-                  {safeSeverityDistribution.map((item, index) => (
-                    <div key={item.severity} className="mb-2">
-                      <div className="d-flex align-items-center justify-content-between">
-                        <div className="d-flex align-items-center">
-                          <div 
-                            className="color-indicator me-2"
-                            style={{
-                              width: '12px',
-                              height: '12px',
-                              borderRadius: '50%',
-                              backgroundColor: getSeverityColor(item.severity)
-                            }}
-                          ></div>
-                          <span className="fw-semibold">{item.severity}</span>
-                        </div>
-                        <span className="badge bg-secondary">{formatNumber(item.count)}</span>
-                      </div>
-                    </div>
-                  ))}
+          ) : (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-chart-bar me-2"></i>
+                  Incidents by Type
+                </h6>
+              </div>
+              <div className="card-body">
+                <div style={{ height: '300px' }}>
+                  <Bar 
+                    data={getIncidentsByTypeChartData()} 
+                    options={chartOptions} 
+                  />
                 </div>
               </div>
             </div>
           )}
         </div>
-      )}
 
-      {/* Status Distribution and Monthly Trends */}
-      {loading ? (
-        <div className="row">
-          <div className="col-xl-6">
+        {/* Severity Distribution - Pie Chart */}
+        <div className="col-xl-6 mb-4">
+          {loading ? (
             <ChartSkeleton />
-          </div>
-          <div className="col-xl-6">
-            <ChartSkeleton />
-          </div>
-        </div>
-      ) : (safeStatusDistribution.length > 0 || safeMonthlyTrends.length > 0) && (
-        <div className="row">
-          {/* Status Distribution */}
-          {safeStatusDistribution.length > 0 && (
-            <div className="col-xl-6">
-              <div className="card shadow border-0 mb-4">
-                <div className="card-header py-3" style={{
-                  backgroundColor: "var(--primary-color)",
-                  background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
-                }}>
-                  <h6 className="card-title mb-0 text-white">
-                    <i className="fas fa-tasks me-2"></i>
-                    Status Distribution
-                  </h6>
-                </div>
-                <div className="card-body">
-                  {safeStatusDistribution.map((item, index) => (
-                    <div key={item.status} className="mb-2">
-                      <div className="d-flex align-items-center justify-content-between">
-                        <div className="d-flex align-items-center">
-                          <div 
-                            className="color-indicator me-2"
-                            style={{
-                              width: '12px',
-                              height: '12px',
-                              borderRadius: '50%',
-                              backgroundColor: getStatusColor(item.status)
-                            }}
-                          ></div>
-                          <span className="fw-semibold">{item.status}</span>
-                        </div>
-                        <span className="badge bg-secondary">{formatNumber(item.count)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          ) : !hasChartData('severity_distribution') ? (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-chart-pie me-2"></i>
+                  Severity Distribution
+                </h6>
+              </div>
+              <div className="card-body text-center py-5">
+                <i className="fas fa-chart-pie fa-2x text-muted mb-3"></i>
+                <p className="text-muted">No severity data available</p>
               </div>
             </div>
-          )}
-
-          {/* Monthly Trends */}
-          {safeMonthlyTrends.length > 0 && (
-            <div className="col-xl-6">
-              <div className="card shadow border-0 mb-4">
-                <div className="card-header py-3" style={{
-                  backgroundColor: "var(--primary-color)",
-                  background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
-                }}>
-                  <h6 className="card-title mb-0 text-white">
-                    <i className="fas fa-chart-line me-2"></i>
-                    Monthly Trends
-                  </h6>
-                </div>
-                <div className="card-body">
-                  {safeMonthlyTrends.map((item, index) => (
-                    <div key={item.month} className="mb-3">
-                      <div className="d-flex justify-content-between mb-1">
-                        <span className="fw-semibold">{item.month}</span>
-                        <span className="text-muted">{formatNumber(item.incidents)}</span>
-                      </div>
-                      <div className="progress" style={{ height: '8px' }}>
-                        <div 
-                          className="progress-bar" 
-                          role="progressbar" 
-                          style={{ 
-                            width: `${calculatePercentage(item.incidents, Math.max(...safeMonthlyTrends.map(m => m.incidents)))}%`,
-                            backgroundColor: '#4e73df'
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
+          ) : (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-chart-pie me-2"></i>
+                  Severity Distribution
+                </h6>
+              </div>
+              <div className="card-body">
+                <div style={{ height: '300px' }}>
+                  <Doughnut 
+                    data={getSeverityDistributionChartData()} 
+                    options={pieChartOptions} 
+                  />
                 </div>
               </div>
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Barangay-wise Distribution */}
-      {loading ? (
-        <div className="row">
-          <div className="col-12">
-            <div className="card shadow border-0 mb-4">
+      {/* Charts Row 2 - Monthly Trends and Status Distribution */}
+      <div className="row mb-4">
+        {/* Monthly Trends - Line Chart */}
+        <div className="col-xl-6 mb-4">
+          {loading ? (
+            <ChartSkeleton />
+          ) : !hasChartData('monthly_trends') ? (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-chart-line me-2"></i>
+                  Monthly Trends
+                </h6>
+              </div>
+              <div className="card-body text-center py-5">
+                <i className="fas fa-chart-line fa-2x text-muted mb-3"></i>
+                <p className="text-muted">No monthly trend data available</p>
+              </div>
+            </div>
+          ) : (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-chart-line me-2"></i>
+                  Monthly Trends
+                </h6>
+              </div>
+              <div className="card-body">
+                <div style={{ height: '300px' }}>
+                  <Line 
+                    data={getMonthlyTrendsChartData()} 
+                    options={chartOptions} 
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Status Distribution - Pie Chart */}
+        <div className="col-xl-6 mb-4">
+          {loading ? (
+            <ChartSkeleton />
+          ) : !hasChartData('status_distribution') ? (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-tasks me-2"></i>
+                  Status Distribution
+                </h6>
+              </div>
+              <div className="card-body text-center py-5">
+                <i className="fas fa-tasks fa-2x text-muted mb-3"></i>
+                <p className="text-muted">No status data available</p>
+              </div>
+            </div>
+          ) : (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-tasks me-2"></i>
+                  Status Distribution
+                </h6>
+              </div>
+              <div className="card-body">
+                <div style={{ height: '300px' }}>
+                  <Pie 
+                    data={getStatusDistributionChartData()} 
+                    options={pieChartOptions} 
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Charts Row 3 - Barangay Distribution and Population Stats */}
+      <div className="row mb-4">
+        {/* Barangay Distribution - Bar Chart */}
+        <div className="col-xl-8 mb-4">
+          {loading ? (
+            <ChartSkeleton />
+          ) : !hasChartData('incidents_by_barangay') ? (
+            <div className="card shadow border-0 h-100">
               <div className="card-header py-3" style={{
                 backgroundColor: "var(--primary-color)",
                 background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
@@ -687,34 +857,13 @@ const IncidentAnalytics = () => {
                   Incidents by Barangay
                 </h6>
               </div>
-              <div className="card-body p-0">
-                <div className="table-responsive">
-                  <table className="table table-striped table-hover mb-0">
-                    <thead style={{ backgroundColor: "var(--background-light)" }}>
-                      <tr>
-                        <th className="text-center fw-bold" style={{ width: "50px", fontSize: "0.875rem" }}>#</th>
-                        <th style={{ fontSize: "0.875rem" }}>Barangay</th>
-                        <th className="text-center" style={{ fontSize: "0.875rem" }}>Total Incidents</th>
-                        <th style={{ fontSize: "0.875rem" }}>Percentage</th>
-                        <th className="text-center" style={{ fontSize: "0.875rem" }}>High/Critical</th>
-                        <th className="text-center" style={{ fontSize: "0.875rem" }}>Resolved</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...Array(5)].map((_, index) => (
-                        <TableRowSkeleton key={index} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="card-body text-center py-5">
+                <i className="fas fa-map-marker-alt fa-2x text-muted mb-3"></i>
+                <p className="text-muted">No barangay data available</p>
               </div>
             </div>
-          </div>
-        </div>
-      ) : safeIncidentsByBarangay.length > 0 && (
-        <div className="row">
-          <div className="col-12">
-            <div className="card shadow border-0 mb-4">
+          ) : (
+            <div className="card shadow border-0 h-100">
               <div className="card-header py-3" style={{
                 backgroundColor: "var(--primary-color)",
                 background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
@@ -724,68 +873,56 @@ const IncidentAnalytics = () => {
                   Incidents by Barangay
                 </h6>
               </div>
-              <div className="card-body p-0">
-                <div className="table-responsive">
-                  <table className="table table-striped table-hover mb-0">
-                    <thead style={{ backgroundColor: "var(--background-light)" }}>
-                      <tr>
-                        <th className="text-center fw-bold" style={{ width: "50px", fontSize: "0.875rem" }}>#</th>
-                        <th style={{ fontSize: "0.875rem" }}>Barangay</th>
-                        <th className="text-center" style={{ fontSize: "0.875rem" }}>Total Incidents</th>
-                        <th style={{ fontSize: "0.875rem" }}>Percentage</th>
-                        <th className="text-center" style={{ fontSize: "0.875rem" }}>High/Critical</th>
-                        <th className="text-center" style={{ fontSize: "0.875rem" }}>Resolved</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {safeIncidentsByBarangay.map((item, index) => {
-                        const percentage = calculatePercentage(item.count, safeOverallStats.total_incidents);
-                        return (
-                          <tr key={item.barangay_name} className="align-middle">
-                            <td className="text-center fw-bold text-muted" style={{ fontSize: "0.9rem" }}>
-                              {index + 1}
-                            </td>
-                            <td>
-                              <strong>{item.barangay_name}</strong>
-                            </td>
-                            <td className="text-center fw-semibold">
-                              {formatNumber(item.count)}
-                            </td>
-                            <td>
-                              <div className="d-flex align-items-center gap-2">
-                                <div className="progress flex-grow-1" style={{ height: '20px' }}>
-                                  <div 
-                                    className="progress-bar" 
-                                    role="progressbar" 
-                                    style={{ width: `${percentage}%` }}
-                                  ></div>
-                                </div>
-                                <small className="text-muted fw-semibold" style={{ minWidth: '45px' }}>
-                                  {percentage.toFixed(1)}%
-                                </small>
-                              </div>
-                            </td>
-                            <td className="text-center">
-                              <span className="badge bg-warning text-dark">
-                                {formatNumber(item.high_critical_count || 0)}
-                              </span>
-                            </td>
-                            <td className="text-center">
-                              <span className="badge bg-success">
-                                {formatNumber(item.resolved_count || 0)}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              <div className="card-body">
+                <div style={{ height: '400px' }}>
+                  <Bar 
+                    data={getBarangayDistributionChartData()} 
+                    options={{
+                      ...chartOptions,
+                      scales: {
+                        ...chartOptions.scales,
+                        x: {
+                          ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                          }
+                        }
+                      }
+                    }} 
+                  />
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+
+        {/* Population Statistics - Bar Chart */}
+        <div className="col-xl-4 mb-4">
+          {loading ? (
+            <ChartSkeleton />
+          ) : (
+            <div className="card shadow border-0 h-100">
+              <div className="card-header py-3" style={{
+                backgroundColor: "var(--primary-color)",
+                background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+              }}>
+                <h6 className="card-title mb-0 text-white">
+                  <i className="fas fa-users me-2"></i>
+                  Population Statistics
+                </h6>
+              </div>
+              <div className="card-body">
+                <div style={{ height: '400px' }}>
+                  <Bar 
+                    data={getPopulationStatsChartData()} 
+                    options={chartOptions} 
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Empty State if no data at all */}
       {!loading && safeOverallStats.total_incidents === 0 && (

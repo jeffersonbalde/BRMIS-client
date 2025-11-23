@@ -357,7 +357,7 @@ const BarangayDashboard = () => {
       <div className="container-fluid px-1">
         <div className="d-flex justify-content-between align-items-center mb-4">
           <div>
-            <h1 className="h3 mb-1 text-dark">{user?.barangay_name} Barangay Dashboard</h1>
+            <h1 className="h3 mb-1 text-dark"> Barangay {user?.barangay_name} Dashboard</h1>
           </div>
         </div>
 
@@ -383,7 +383,7 @@ const BarangayDashboard = () => {
       {/* Page Header */}
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
         <div className="flex-grow-1">
-          <h1 className="h3 mb-1 text-dark">{user?.barangay_name} Barangay Dashboard</h1>
+          <h1 className="h3 mb-1 text-dark">Barangay {user?.barangay_name} Dashboard</h1>
           <p className="text-muted mb-0">
             Comprehensive Population Affected Overview
           </p>

@@ -5,7 +5,7 @@ import { showAlert, showToast } from "../../../services/notificationService";
 import UserDetailsModal from "./UserDetailsModal";
 
 const UserManagement = () => {
-  const { user: currentUser, token } = useAuth();
+  const { user: currentUser, token, refreshPendingApprovals } = useAuth();
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,48 +118,45 @@ const UserManagement = () => {
     }
   };
 
+  // Avatar component for consistent rendering
+  const UserAvatar = ({ user, size = 40 }) => {
+    const [avatarError, setAvatarError] = useState(false);
+    
+    const handleImageError = () => {
+      setAvatarError(true);
+    };
 
+    if (user.avatar && !avatarError) {
+      return (
+        <img
+          src={formatAvatarUrl(user.avatar)}
+          alt={user.name}
+          className="rounded-circle"
+          style={{
+            width: `${size}px`,
+            height: `${size}px`,
+            objectFit: "cover",
+          }}
+          onError={handleImageError}
+        />
+      );
+    }
 
-
-// Avatar component for consistent rendering
-const UserAvatar = ({ user, size = 40 }) => {
-  const [avatarError, setAvatarError] = useState(false);
-  
-  const handleImageError = () => {
-    setAvatarError(true);
-  };
-
-  if (user.avatar && !avatarError) {
     return (
-      <img
-        src={formatAvatarUrl(user.avatar)}
-        alt={user.name}
-        className="rounded-circle"
+      <div
+        className="rounded-circle d-flex align-items-center justify-content-center text-white"
         style={{
           width: `${size}px`,
           height: `${size}px`,
-          objectFit: "cover",
+          backgroundColor: "var(--primary-color)",
+          background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
+          fontSize: `${size * 0.4}px`,
         }}
-        onError={handleImageError}
-      />
+      >
+        <i className="fas fa-user"></i>
+      </div>
     );
-  }
-
-  return (
-    <div
-      className="rounded-circle d-flex align-items-center justify-content-center text-white"
-      style={{
-        width: `${size}px`,
-        height: `${size}px`,
-        backgroundColor: "var(--primary-color)",
-        background: "linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%)",
-        fontSize: `${size * 0.4}px`,
-      }}
-    >
-      <i className="fas fa-user"></i>
-    </div>
-  );
-};
+  };
 
   const handleViewDetails = async (user) => {
     if (actionLock) {
@@ -191,6 +188,74 @@ const UserAvatar = ({ user, size = 40 }) => {
     } catch (error) {
       console.error("Error fetching user details:", error);
       showToast.error("Failed to load user details");
+    } finally {
+      setActionLoading(null);
+      setActionLock(false);
+    }
+  };
+
+  // NEW: Handle approve user function
+  const handleApprove = async (user) => {
+    if (actionLock) {
+      showToast.warning("Please wait until the current action completes");
+      return;
+    }
+
+    const result = await showAlert.confirm(
+      "Approve User",
+      `Are you sure you want to approve ${user.name}? This action will grant them full access to the system.`,
+      "Yes, Approve",
+      "Cancel"
+    );
+
+    if (!result.isConfirmed) return;
+
+    setActionLock(true);
+    setActionLoading(user.id);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_LARAVEL_API}/admin/users/${user.id}/approve`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.ok) {
+        showToast.success("User approved successfully!");
+        
+        // Update the user in the local state
+        setUsers((prev) =>
+          prev.map((u) => 
+            u.id === user.id 
+              ? { 
+                  ...u, 
+                  status: 'approved', 
+                  is_approved: true,
+                  approved_at: new Date().toISOString(),
+                  rejected_at: null,
+                  rejection_reason: null
+                } 
+              : u
+          )
+        );
+        
+        // Refresh pending approvals count
+        if (refreshPendingApprovals) {
+          await refreshPendingApprovals();
+        }
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to approve user");
+      }
+    } catch (error) {
+      console.error("Error approving user:", error);
+      showAlert.error("Approval Failed", error.message || "Failed to approve user. Please try again.");
     } finally {
       setActionLoading(null);
       setActionLock(false);
@@ -470,22 +535,22 @@ const UserAvatar = ({ user, size = 40 }) => {
     </tr>
   );
 
-const formatLocalDateTime = (dateString) => {
-  if (!dateString) return "N/A";
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "Invalid Date";
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch (error) {
-    return "Date Error";
-  }
-};
+  const formatLocalDateTime = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Invalid Date";
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      return "Date Error";
+    }
+  };
 
   return (
     <div className="container-fluid px-1 fadeIn">
@@ -794,6 +859,25 @@ const formatLocalDateTime = (dateString) => {
                               )}
                             </button>
 
+                            {/* NEW: Approve Button for rejected users */}
+                            {user.status === 'rejected' && (
+                              <button
+                                className="btn action-btn btn-approve"
+                                onClick={() => handleApprove(user)}
+                                disabled={isActionDisabled(user.id)}
+                                title="Approve User"
+                              >
+                                {actionLoading === user.id ? (
+                                  <span
+                                    className="spinner-border spinner-border-sm"
+                                    role="status"
+                                  ></span>
+                                ) : (
+                                  <i className="fas fa-check"></i>
+                                )}
+                              </button>
+                            )}
+
                             {/* Deactivate/Reactivate Button */}
                             {user.is_active ? (
                               <button
@@ -831,29 +915,29 @@ const formatLocalDateTime = (dateString) => {
                           </div>
                         </td>
 
-<td>
-  <div className="d-flex align-items-center">
-    <div className="me-3 flex-shrink-0">
-      <UserAvatar user={user} size={40} />
-    </div>  
-    <div className="flex-grow-1 min-w-0">
-      <div
-        className="fw-semibold text-dark text-truncate"
-        style={{ fontSize: "0.9rem", lineHeight: "1.3" }}
-        title={user.name}
-      >
-        {user.name}
-      </div>
-      <small
-        className="text-muted d-block text-truncate"
-        style={{ fontSize: "0.8rem", lineHeight: "1.3" }}
-        title={user.email}
-      >
-        {user.email}
-      </small>
-    </div>
-  </div>
-</td>
+                        <td>
+                          <div className="d-flex align-items-center">
+                            <div className="me-3 flex-shrink-0">
+                              <UserAvatar user={user} size={40} />
+                            </div>  
+                            <div className="flex-grow-1 min-w-0">
+                              <div
+                                className="fw-semibold text-dark text-truncate"
+                                style={{ fontSize: "0.9rem", lineHeight: "1.3" }}
+                                title={user.name}
+                              >
+                                {user.name}
+                              </div>
+                              <small
+                                className="text-muted d-block text-truncate"
+                                style={{ fontSize: "0.8rem", lineHeight: "1.3" }}
+                                title={user.email}
+                              >
+                                {user.email}
+                              </small>
+                            </div>
+                          </div>
+                        </td>
 
                         <td>
                           <div
@@ -890,15 +974,15 @@ const formatLocalDateTime = (dateString) => {
                           </small>
                         </td>
 
-<td className="text-center">
-  <div
-    className="fw-semibold text-dark"
-    style={{ fontSize: "0.85rem" }}
-    title={formatLocalDateTime(user.created_at)}
-  >
-    {formatLocalDateTime(user.created_at)}
-  </div>
-</td>
+                        <td className="text-center">
+                          <div
+                            className="fw-semibold text-dark"
+                            style={{ fontSize: "0.85rem" }}
+                            title={formatLocalDateTime(user.created_at)}
+                          >
+                            {formatLocalDateTime(user.created_at)}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
