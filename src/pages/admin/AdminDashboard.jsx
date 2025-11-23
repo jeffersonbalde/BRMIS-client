@@ -1,4 +1,4 @@
-// components/dashboards/AdminDashboard.jsx - UPDATED SKELETON LOADING
+// components/dashboards/AdminDashboard.jsx - FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { dashboardService } from '../../services/dashboardService';
@@ -18,7 +18,8 @@ const AdminDashboard = () => {
     error: null
   });
 
-  const { user, refreshPendingApprovals, refreshNotifications } = useAuth();
+  // Make sure you're destructuring token from useAuth
+  const { user, token, refreshPendingApprovals, refreshNotifications } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -28,7 +29,9 @@ const AdminDashboard = () => {
   const loadDashboardData = async () => {
     try {
       setDashboardData(prev => ({ ...prev, loading: true, error: null }));
-      const data = await dashboardService.getAdminDashboardData();
+      
+      // Pass the token to the service function
+      const data = await dashboardService.getAdminDashboardData(token);
       
       setDashboardData({
         ...data,

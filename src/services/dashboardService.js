@@ -1,4 +1,4 @@
-// services/dashboardService.js - ONLY ADDING ADMIN METHOD, KEEPING BARANGAY LOGIC INTACT
+// services/dashboardService.js - FIXED VERSION
 import api from './api';
 
 export const dashboardService = {
@@ -77,15 +77,52 @@ export const dashboardService = {
     }
   },
 
-  // ADD ONLY THIS NEW METHOD FOR ADMIN - DON'T TOUCH EXISTING ONES
-  getAdminDashboardData: async () => {
+  // MODIFIED: Admin Dashboard Data - Accept token as parameter
+  getAdminDashboardData: async (token) => {
     try {
+      if (!token) {
+        throw new Error('No authentication token provided');
+      }
+
+      console.log('🔄 Starting admin dashboard data fetch...');
+
+      // Use direct fetch calls like BarangayDashboard instead of api instance
       const requests = [
-        api.get('/admin/pending-users-count'),
-        api.get('/admin/barangays/population-data'),
-        api.get('/incidents/stats'),
-        api.get('/notifications?limit=5'),
-        api.get('/incidents?limit=5')
+        fetch(`${import.meta.env.VITE_LARAVEL_API}/admin/pending-users-count`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        }),
+        fetch(`${import.meta.env.VITE_LARAVEL_API}/admin/barangays/population-data`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        }),
+        fetch(`${import.meta.env.VITE_LARAVEL_API}/incidents/stats`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        }),
+        fetch(`${import.meta.env.VITE_LARAVEL_API}/notifications?limit=5`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        }),
+        fetch(`${import.meta.env.VITE_LARAVEL_API}/incidents?limit=5`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        })
       ];
 
       const [
@@ -96,20 +133,44 @@ export const dashboardService = {
         recentIncidentsRes
       ] = await Promise.allSettled(requests);
 
-      // Handle responses with proper error handling
-      const pendingCount = pendingCountRes.status === 'fulfilled' ? pendingCountRes.value : { pending_count: 0 };
-      const barangays = barangaysRes.status === 'fulfilled' ? barangaysRes.value : { barangays: [], total_barangays: 0 };
-      const incidents = incidentsRes.status === 'fulfilled' ? incidentsRes.value : { stats: {} };
-      const notifications = notificationsRes.status === 'fulfilled' ? notificationsRes.value : { notifications: [] };
-      const recentIncidents = recentIncidentsRes.status === 'fulfilled' ? recentIncidentsRes.value : { incidents: [] };
+      console.log('📊 All admin API responses received');
 
-      console.log('Admin Dashboard API Responses:', {
-        pendingCount: pendingCount.pending_count,
-        barangays: barangays.barangays?.length,
-        incidents: incidents.stats,
-        notifications: notifications.notifications?.length,
-        recentIncidents: recentIncidents.incidents?.length
-      });
+      // Process responses with proper error handling like BarangayDashboard
+      let pendingCount = { pending_count: 0 };
+      if (pendingCountRes.status === 'fulfilled' && pendingCountRes.value.ok) {
+        pendingCount = await pendingCountRes.value.json();
+        console.log('👥 Pending users count:', pendingCount);
+      } else {
+        console.warn('Pending users API failed:', pendingCountRes);
+      }
+
+      let barangays = { barangays: [], total_barangays: 0 };
+      if (barangaysRes.status === 'fulfilled' && barangaysRes.value.ok) {
+        barangays = await barangaysRes.value.json();
+        console.log('🏘️ Barangays data:', barangays);
+      } else {
+        console.warn('Barangays population data API failed:', barangaysRes);
+      }
+
+      let incidents = { stats: {} };
+      if (incidentsRes.status === 'fulfilled' && incidentsRes.value.ok) {
+        incidents = await incidentsRes.value.json();
+        console.log('📈 Incidents stats:', incidents);
+      }
+
+      let notifications = { notifications: [] };
+      if (notificationsRes.status === 'fulfilled' && notificationsRes.value.ok) {
+        notifications = await notificationsRes.value.json();
+        console.log('🔔 Notifications:', notifications);
+      }
+
+      let recentIncidents = { incidents: [] };
+      if (recentIncidentsRes.status === 'fulfilled' && recentIncidentsRes.value.ok) {
+        recentIncidents = await recentIncidentsRes.value.json();
+        console.log('🚨 Recent incidents:', recentIncidents);
+      }
+
+      console.log('✅ Admin dashboard data processed successfully');
 
       return {
         pendingApprovals: pendingCount.pending_count || 0,
@@ -117,12 +178,14 @@ export const dashboardService = {
         activeIncidents: incidents.stats?.total || 0,
         highCriticalIncidents: incidents.stats?.high_critical || 0,
         barangays: barangays.barangays || [],
-        analytics: {}, // You can add analytics data here if needed
+        analytics: {},
         recentNotifications: notifications.notifications || [],
         recentIncidents: recentIncidents.incidents?.slice(0, 5) || [],
       };
     } catch (error) {
-      console.error('Error fetching admin dashboard data:', error);
+      console.error('❌ Error fetching admin dashboard data:', error);
+      
+      // Return fallback data like the original function
       return {
         pendingApprovals: 0,
         totalBarangays: 0,
