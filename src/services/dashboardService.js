@@ -1,4 +1,4 @@
-// services/dashboardService.js - FIXED VERSION
+// services/dashboardService.js - CORRECTED VERSION
 import api from './api';
 
 export const dashboardService = {
@@ -77,7 +77,7 @@ export const dashboardService = {
     }
   },
 
-  // MODIFIED: Admin Dashboard Data - Accept token as parameter
+  // CORRECTED: Admin Dashboard Data - COMPLETELY REMOVE the problematic endpoint
   getAdminDashboardData: async (token) => {
     try {
       if (!token) {
@@ -86,16 +86,9 @@ export const dashboardService = {
 
       console.log('🔄 Starting admin dashboard data fetch...');
 
-      // Use direct fetch calls like BarangayDashboard instead of api instance
+      // ONLY include endpoints that work - completely remove the problematic one
       const requests = [
         fetch(`${import.meta.env.VITE_LARAVEL_API}/admin/pending-users-count`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-          },
-        }),
-        fetch(`${import.meta.env.VITE_LARAVEL_API}/admin/barangays/population-data`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -127,7 +120,6 @@ export const dashboardService = {
 
       const [
         pendingCountRes,
-        barangaysRes,
         incidentsRes,
         notificationsRes,
         recentIncidentsRes
@@ -135,21 +127,13 @@ export const dashboardService = {
 
       console.log('📊 All admin API responses received');
 
-      // Process responses with proper error handling like BarangayDashboard
+      // Process responses
       let pendingCount = { pending_count: 0 };
       if (pendingCountRes.status === 'fulfilled' && pendingCountRes.value.ok) {
         pendingCount = await pendingCountRes.value.json();
         console.log('👥 Pending users count:', pendingCount);
       } else {
         console.warn('Pending users API failed:', pendingCountRes);
-      }
-
-      let barangays = { barangays: [], total_barangays: 0 };
-      if (barangaysRes.status === 'fulfilled' && barangaysRes.value.ok) {
-        barangays = await barangaysRes.value.json();
-        console.log('🏘️ Barangays data:', barangays);
-      } else {
-        console.warn('Barangays population data API failed:', barangaysRes);
       }
 
       let incidents = { stats: {} };
@@ -172,12 +156,13 @@ export const dashboardService = {
 
       console.log('✅ Admin dashboard data processed successfully');
 
+      // Return data WITHOUT barangays information
       return {
         pendingApprovals: pendingCount.pending_count || 0,
-        totalBarangays: barangays.total_barangays || 0,
+        totalBarangays: 0, // Hardcoded as 0 since we can't fetch this data
         activeIncidents: incidents.stats?.total || 0,
         highCriticalIncidents: incidents.stats?.high_critical || 0,
-        barangays: barangays.barangays || [],
+        barangays: [], // Empty array since we can't fetch this data
         analytics: {},
         recentNotifications: notifications.notifications || [],
         recentIncidents: recentIncidents.incidents?.slice(0, 5) || [],
@@ -185,7 +170,6 @@ export const dashboardService = {
     } catch (error) {
       console.error('❌ Error fetching admin dashboard data:', error);
       
-      // Return fallback data like the original function
       return {
         pendingApprovals: 0,
         totalBarangays: 0,
