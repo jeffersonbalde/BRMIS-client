@@ -440,42 +440,45 @@ const IncidentDetailsModal = ({ incident, onClose }) => {
                   </div>
                 </div>
 
-                {/* Casualties Summary */}
-                <div className="col-12 col-md-6">
-                  <div
-                    className="card border-0 bg-white"
-                    style={{ height: "100%" }}
-                  >
-                    <div className="card-header border-bottom bg-white py-2">
-                      <h6 className="mb-0 fw-semibold text-dark">
-                        <i className="fas fa-heartbeat me-2 text-danger"></i>
-                        Casualties Summary
-                      </h6>
-                    </div>
-                    <div className="card-body p-2">
-                      <div className="row text-center g-2">
-                        <div className="col-4">
-                          <div className="h5 mb-0 fw-bold text-dark">
-                            {incident.casualties?.dead || 0}
-                          </div>
-                          <small className="text-muted">Deceased</small>
-                        </div>
-                        <div className="col-4">
-                          <div className="h5 mb-0 fw-bold text-warning">
-                            {incident.casualties?.injured || 0}
-                          </div>
-                          <small className="text-muted">Injured</small>
-                        </div>
-                        <div className="col-4">
-                          <div className="h5 mb-0 fw-bold text-secondary">
-                            {incident.casualties?.missing || 0}
-                          </div>
-                          <small className="text-muted">Missing</small>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+{/* Casualties Summary */}
+<div className="col-12 col-md-6">
+  <div
+    className="card border-0 bg-white"
+    style={{ height: "100%" }}
+  >
+    <div className="card-header border-bottom bg-white py-2">
+      <h6 className="mb-0 fw-semibold text-dark">
+        <i className="fas fa-heartbeat me-2 text-danger"></i>
+        Casualties Summary
+      </h6>
+    </div>
+    <div className="card-body p-2">
+      <div className="row text-center g-2">
+        <div className="col-4">
+          <div className="h5 mb-0 fw-bold text-dark">
+            {incident.calculated_casualties?.dead || 
+             incident.casualties?.dead || 0}
+          </div>
+          <small className="text-muted">Deceased</small>
+        </div>
+        <div className="col-4">
+          <div className="h5 mb-0 fw-bold text-warning">
+            {incident.calculated_casualties?.injured || 
+             incident.casualties?.injured || 0}
+          </div>
+          <small className="text-muted">Injured</small>
+        </div>
+        <div className="col-4">
+          <div className="h5 mb-0 fw-bold text-secondary">
+            {incident.calculated_casualties?.missing || 
+             incident.casualties?.missing || 0}
+          </div>
+          <small className="text-muted">Missing</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
                 {/* Description */}
                 <div className="col-12">
