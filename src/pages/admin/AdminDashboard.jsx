@@ -248,7 +248,6 @@ const AdminDashboard = () => {
               </div>
             </div>
             
-// In your AdminDashboard component - Update the total population card
 <div className="col-12 col-sm-6 col-xl-3">
   <div className="card bg-info text-white h-100 shadow-sm">
     <div className="card-body">
