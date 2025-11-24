@@ -248,22 +248,25 @@ const AdminDashboard = () => {
               </div>
             </div>
             
-            <div className="col-12 col-sm-6 col-xl-3">
-              <div className="card bg-info text-white h-100 shadow-sm">
-                <div className="card-body">
-                  <div className="d-flex justify-content-between align-items-start">
-                    <div className="flex-grow-1">
-                      <h6 className="card-title small fw-normal mb-1">Total Population</h6>
-                      <h3 className="fw-bold mb-0">{formatNumber(totalPopulation)}</h3>
-                      <small className="opacity-75">Across all barangays</small>
-                    </div>
-                    <div className="align-self-center flex-shrink-0 ms-2">
-                      <i className="fas fa-users fa-2x opacity-75"></i>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+// In your AdminDashboard component - Update the total population card
+<div className="col-12 col-sm-6 col-xl-3">
+  <div className="card bg-info text-white h-100 shadow-sm">
+    <div className="card-body">
+      <div className="d-flex justify-content-between align-items-start">
+        <div className="flex-grow-1">
+          <h6 className="card-title small fw-normal mb-1">Total Population</h6>
+          <h3 className="fw-bold mb-0">{formatNumber(dashboardData.totalPopulation)}</h3>
+          <small className="opacity-75">
+            Across all barangays
+          </small>
+        </div>
+        <div className="align-self-center flex-shrink-0 ms-2">
+          <i className="fas fa-users fa-2x opacity-75"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
           </>
         )}
       </div>
